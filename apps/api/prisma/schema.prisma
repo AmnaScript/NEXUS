@@ -1,0 +1,37 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Incident {
+  id          String   @id @default(uuid())
+  reference   String   @unique
+  title       String
+  location    String
+  severity    String
+  status      String   @default("New")
+  longitude   Float
+  latitude    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  activities  IncidentActivity[]
+}
+
+model IncidentActivity {
+  id          String   @id @default(uuid())
+  incidentId  String
+  action      String
+  oldStatus   String?
+  newStatus   String?
+  createdAt   DateTime @default(now())
+
+ incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, createdAt])
+}
