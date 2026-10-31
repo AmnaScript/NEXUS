@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ArrowUpRight } from "lucide-react";
 import CityScene from "../features/cinematic-intro/CityScene";
 import { Link } from "react-router-dom";
+import CityPulseSection from "../features/landing/CityPulseSection";
 
 export default function LandingPage() {
     const heroRef = useRef<HTMLElement>(null);
@@ -92,7 +93,7 @@ export default function LandingPage() {
                     </a>
                 </div>
 
-                 <Link to="/preview"
+                <Link to="/preview"
                     className="rounded-full bg-[#202A31] px-5 py-3 text-sm font-medium text-white hover:bg-[#217F79]"
                 >
                     Enter Demo
@@ -149,12 +150,7 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            <section id="about" className="mx-auto max-w-7xl px-6 py-24">
-                <p className="mb-4 text-sm font-medium text-[#217F79]">THE IDEA</p>
-                <h2 className="max-w-3xl text-3xl font-semibold md:text-5xl">
-                    A smarter way to understand the world around us.
-                </h2>
-            </section>
+            <CityPulseSection />
 
             <section id="technology" className="mx-auto max-w-7xl px-6 py-16">
                 <h2 className="text-3xl font-semibold">
