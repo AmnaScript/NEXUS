@@ -1,9 +1,18 @@
+
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
 :root {
-  font-family: Inter, system-ui, sans-serif;
-  background: #f7f6f2;
-  color: #202a31;
+  font-family: var(--nx-font-body);
+  color: var(--nx-ink);
+  background: var(--nx-cream);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -13,4 +22,23 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }

@@ -1,41 +1,71 @@
+
 import { useEffect } from "react";
-import { useFrame,  useThree } from "@react-three/fiber";
+import type { MutableRefObject } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
 type Props = {
-  progress: React.MutableRefObject<{ t: number; reserve: number }>;
+  progress: MutableRefObject<{
+    t: number;
+    reserve: number;
+  }>;
 };
 
 export default function CityAnimation({ progress }: Props) {
   const { camera, size } = useThree();
 
   useEffect(() => {
-    camera.position.set(12, 14, 16);
+    camera.position.set(26, 32, 36);
     camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
   }, [camera]);
 
   useFrame(() => {
     const cam = camera as THREE.OrthographicCamera;
     const { t, reserve } = progress.current;
 
-    // full-size city at the start
-    const startZoom = Math.min(size.width / 17, size.height / 15);
+    const safeT = THREE.MathUtils.clamp(t, 0, 1);
 
-    // end size: the city fits in the space above the text
-    const availableHeight = Math.max(size.height - reserve, 140);
-    const endZoom = Math.min(startZoom, availableHeight / 14);
+    // Scene bounds are now approximately 30 x 30 world units.
+    // A conservative camera fit prevents outer districts
+    // from being cropped on typical laptop screens.
+    const startZoom = Math.min(
+      size.width / 43,
+      size.height / 38
+    );
 
-    cam.zoom = THREE.MathUtils.lerp(startZoom, endZoom, t);
+    const availableHeight = Math.max(
+      170,
+      size.height - reserve - 14
+    );
 
-    // move the city up by half the reserved space, so it stays
-    // centered in the area above the text
+    const endZoom = Math.min(
+      startZoom,
+      availableHeight / 34
+    );
+
+    cam.zoom = THREE.MathUtils.lerp(
+      startZoom,
+      endZoom,
+      safeT
+    );
+
+    cam.position.set(
+      THREE.MathUtils.lerp(26, 27, safeT),
+      THREE.MathUtils.lerp(32, 34, safeT),
+      THREE.MathUtils.lerp(36, 38, safeT)
+    );
+
+    cam.lookAt(0, 0, 0);
+
+    // Shift visual framing toward the space above hero copy.
     cam.setViewOffset(
-      size.width,
-      size.height,
+      Math.max(size.width, 1),
+      Math.max(size.height, 1),
       0,
-      (reserve / 2) * t,
-      size.width,
-      size.height
+      (reserve / 2.1) * safeT,
+      Math.max(size.width, 1),
+      Math.max(size.height, 1)
     );
 
     cam.updateProjectionMatrix();
