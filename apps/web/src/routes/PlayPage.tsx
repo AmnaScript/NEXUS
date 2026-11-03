@@ -5,37 +5,29 @@ import {
   useRef,
   useState,
 } from "react";
-
-import type {
-  ReactNode,
-  RefObject,
-} from "react";
-
+import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
-
 import {
-  ArrowLeft,
-  ArrowUp,
   ArrowDown,
+  ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  Camera,
   CirclePause,
   CirclePlay,
+  Flag,
+  Map,
   RotateCcw,
+  Siren,
   Volume2,
   VolumeX,
-  Siren,
-  Flag,
-  Camera,
-  Map as MapIcon,
 } from "lucide-react";
 
 import DrivingScene from "../features/rescue-run/DrivingScene";
-
 import type {
   CameraMode,
   DrivingData,
 } from "../features/rescue-run/DrivingScene";
-
 import MiniMap from "../features/rescue-run/MiniMap";
 
 import {
@@ -50,6 +42,11 @@ import {
   type MissionStage,
 } from "../features/rescue-run/gameConfig";
 
+import {
+  createGameIncident,
+  updateGameIncident,
+} from "../features/rescue-run/gameIncidentBridge";
+
 type Inputs = Record<InputKey, boolean>;
 
 const EMPTY_INPUTS: Inputs = {
@@ -63,31 +60,15 @@ const EMPTY_INPUTS: Inputs = {
 const BEST_KEY = "nexus-rescue-best-v1";
 const MISSION_SECONDS = 95;
 
-function playTone(
-  frequency: number,
-  duration = 0.16
-) {
+function playTone(frequency: number, duration = 0.16) {
   try {
-    const AudioContextClass = window.AudioContext;
-
-    if (!AudioContextClass) return;
-
-    const ctx = new AudioContextClass();
+    const ctx = new AudioContext();
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
 
     oscillator.type = "sine";
-
-    oscillator.frequency.setValueAtTime(
-      frequency,
-      ctx.currentTime
-    );
-
-    gain.gain.setValueAtTime(
-      0.08,
-      ctx.currentTime
-    );
-
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(
       0.001,
       ctx.currentTime + duration
@@ -103,7 +84,7 @@ function playTone(
       void ctx.close();
     };
   } catch {
-    // Audio is optional.
+    // Sound is optional.
   }
 }
 
@@ -111,16 +92,16 @@ function TouchButton({
   label,
   action,
   inputs,
-  icon,
+  children,
 }: {
   label: string;
   action: InputKey;
   inputs: RefObject<Inputs>;
-  icon: ReactNode;
+  children: ReactNode;
 }) {
-  const setInput = (value: boolean) => {
+  const setInput = (pressed: boolean) => {
     if (inputs.current) {
-      inputs.current[action] = value;
+      inputs.current[action] = pressed;
     }
   };
 
@@ -130,11 +111,7 @@ function TouchButton({
       aria-label={label}
       onPointerDown={(event) => {
         event.preventDefault();
-
-        event.currentTarget.setPointerCapture(
-          event.pointerId
-        );
-
+        event.currentTarget.setPointerCapture(event.pointerId);
         setInput(true);
       }}
       onPointerUp={() => setInput(false)}
@@ -143,15 +120,29 @@ function TouchButton({
       onContextMenu={(event) => event.preventDefault()}
       className="flex h-14 w-14 touch-none select-none items-center justify-center rounded-2xl border-2 border-white/30 bg-[#1B1F3B]/85 text-white active:bg-[#FF5A4E]"
     >
-      {icon}
+      {children}
     </button>
   );
 }
 
+function loadBestScore(): number {
+  try {
+    return Math.max(
+      0,
+      Number(localStorage.getItem(BEST_KEY)) || 0
+    );
+  } catch {
+    return 0;
+  }
+}
+
+function newRunId(): string {
+  return crypto.randomUUID().slice(0, 8).toUpperCase();
+}
+
 export default function PlayPage() {
-  const inputs = useRef<Inputs>({
-    ...EMPTY_INPUTS,
-  });
+  const inputs = useRef<Inputs>({ ...EMPTY_INPUTS });
+  const currentIncidentId = useRef<string | null>(null);
 
   const gameRef = useRef({
     mode: "menu" as GameMode,
@@ -162,62 +153,47 @@ export default function PlayPage() {
     combo: 0,
     lastCollision: MISSION_SECONDS + 10,
     hudAccumulator: 0,
+    runId: "",
   });
 
-  const [mode, setMode] =
-    useState<GameMode>("menu");
-
-  const [stage, setStage] =
-    useState<MissionStage>("pickup");
-
+  const [mode, setMode] = useState<GameMode>("menu");
+  const [stage, setStage] = useState<MissionStage>("pickup");
   const [mission, setMission] = useState(0);
-  const [remaining, setRemaining] =
-    useState(MISSION_SECONDS);
-
+  const [remaining, setRemaining] = useState(MISSION_SECONDS);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [heading, setHeading] = useState(0);
-
-  const [player, setPlayer] = useState({
-    ...START,
-  });
-
+  const [player, setPlayer] = useState({ ...START });
   const [cameraMode, setCameraMode] =
     useState<CameraMode>("chase");
-
   const [showMap, setShowMap] = useState(true);
-  const [targetDistance, setTargetDistance] =
-    useState(0);
-
+  const [targetDistance, setTargetDistance] = useState(0);
   const [resetId, setResetId] = useState(0);
   const [muted, setMuted] = useState(true);
   const [siren, setSiren] = useState(false);
+  const [best, setBest] = useState(loadBestScore);
 
-  const [best, setBest] = useState(() => {
-    try {
-      return Math.max(
-        0,
-        Number(localStorage.getItem(BEST_KEY)) || 0
-      );
-    } catch {
-      return 0;
-    }
-  });
+  function resetControls() {
+    Object.assign(inputs.current, EMPTY_INPUTS);
+  }
 
-  const updateMode = (next: GameMode) => {
+  function updateMode(next: GameMode) {
     gameRef.current.mode = next;
     setMode(next);
-  };
+  }
 
-  const resetControls = () => {
-    Object.assign(
-      inputs.current,
-      EMPTY_INPUTS
+  function openMissionIncident(index: number, runId: string) {
+    currentIncidentId.current = createGameIncident(
+      runId,
+      index + 1,
+      PICKUPS[index]
     );
-  };
+  }
 
-  const start = () => {
+  function start() {
+    const runId = newRunId();
+
     gameRef.current = {
       mode: "playing",
       stage: "pickup",
@@ -227,8 +203,10 @@ export default function PlayPage() {
       combo: 0,
       lastCollision: MISSION_SECONDS + 10,
       hudAccumulator: 0,
+      runId,
     };
 
+    openMissionIncident(0, runId);
     resetControls();
 
     setStage("pickup");
@@ -239,55 +217,46 @@ export default function PlayPage() {
     setSpeed(0);
     setHeading(0);
     setPlayer({ ...START });
-
-    setResetId((id) => id + 1);
+    setTargetDistance(distance(START, PICKUPS[0]));
+    setResetId((value) => value + 1);
     setMode("playing");
-  };
+  }
 
-  const pause = () => {
+  function pause() {
     if (gameRef.current.mode !== "playing") return;
-
     resetControls();
     updateMode("paused");
-  };
+  }
 
-  const resume = () => {
+  function resume() {
     if (gameRef.current.mode === "paused") {
       updateMode("playing");
     }
-  };
+  }
 
-  // Keyboard input
   useEffect(() => {
-    const down = (event: KeyboardEvent) => {
-      const action =
-        KEY_MAP[event.key.toLowerCase()];
+    const onDown = (event: KeyboardEvent) => {
+      const action = KEY_MAP[event.key.toLowerCase()];
 
-      if (
-        action &&
-        gameRef.current.mode === "playing"
-      ) {
+      if (action && gameRef.current.mode === "playing") {
         event.preventDefault();
         inputs.current[action] = true;
       }
 
       if (event.key === "Escape") {
         if (gameRef.current.mode === "playing") {
-          resetControls();
+          Object.assign(inputs.current, EMPTY_INPUTS);
           gameRef.current.mode = "paused";
           setMode("paused");
-        } else if (
-          gameRef.current.mode === "paused"
-        ) {
+        } else if (gameRef.current.mode === "paused") {
           gameRef.current.mode = "playing";
           setMode("playing");
         }
       }
     };
 
-    const up = (event: KeyboardEvent) => {
-      const action =
-        KEY_MAP[event.key.toLowerCase()];
+    const onUp = (event: KeyboardEvent) => {
+      const action = KEY_MAP[event.key.toLowerCase()];
 
       if (action) {
         event.preventDefault();
@@ -295,24 +264,24 @@ export default function PlayPage() {
       }
     };
 
-    const blur = () => resetControls();
+    const onBlur = () => {
+      Object.assign(inputs.current, EMPTY_INPUTS);
+    };
 
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    window.addEventListener("blur", blur);
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", onBlur);
 
     return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      window.removeEventListener("blur", blur);
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, []);
 
-  // Game controller
   const onTick = useCallback(
     (dt: number, data: DrivingData) => {
       const game = gameRef.current;
-
       if (game.mode !== "playing") return;
 
       game.remaining -= dt;
@@ -323,46 +292,50 @@ export default function PlayPage() {
 
         setRemaining(0);
         setMode("gameover");
-
         return;
       }
 
-      // Crash penalty, limited to once per cooldown.
       if (
         data.collision &&
         game.lastCollision - game.remaining > 0.65
       ) {
         game.combo = 0;
-
-        game.score = Math.max(
-          0,
-          game.score - 40
-        );
-
+        game.score = Math.max(0, game.score - 40);
         game.lastCollision = game.remaining;
 
         setCombo(0);
         setScore(game.score);
       }
 
-      const target =
+      const currentTarget =
         game.stage === "pickup"
           ? PICKUPS[game.mission]
           : HOSPITAL;
 
-      // Reached a mission marker at low speed.
       if (
-        distance(data, target) < 1.4 &&
+        distance(data, currentTarget) < 1.4 &&
         data.speed < 4.5
       ) {
         if (game.stage === "pickup") {
           game.stage = "hospital";
           setStage("hospital");
 
-          if (!muted) {
-            playTone(680);
+          if (currentIncidentId.current) {
+            updateGameIncident(
+              currentIncidentId.current,
+              "Under Review"
+            );
           }
+
+          if (!muted) playTone(680);
         } else {
+          if (currentIncidentId.current) {
+            updateGameIncident(
+              currentIncidentId.current,
+              "Resolved"
+            );
+          }
+
           game.combo += 1;
 
           const earned =
@@ -375,41 +348,37 @@ export default function PlayPage() {
           setScore(game.score);
           setCombo(game.combo);
 
-          if (!muted) {
-            playTone(880);
-          }
+          if (!muted) playTone(880);
 
-          if (
-            game.mission + 1 >=
-            TOTAL_MISSIONS
-          ) {
+          if (game.mission + 1 >= TOTAL_MISSIONS) {
             game.mode = "result";
             setMode("result");
 
-            setBest((old) => {
-              const value = Math.max(
-                old,
-                game.score
-              );
+            setBest((previous) => {
+              const next = Math.max(previous, game.score);
 
               try {
                 localStorage.setItem(
                   BEST_KEY,
-                  String(value)
+                  String(next)
                 );
               } catch {
-                // Local storage is optional.
+                // Storage may be disabled.
               }
 
-              return value;
+              return next;
             });
           } else {
             game.mission += 1;
             game.stage = "pickup";
-
             game.remaining = Math.min(
               115,
               game.remaining + 70
+            );
+
+            openMissionIncident(
+              game.mission,
+              game.runId
             );
 
             setMission(game.mission);
@@ -418,7 +387,6 @@ export default function PlayPage() {
         }
       }
 
-      // Avoid React state updates on every render frame.
       game.hudAccumulator += dt;
 
       if (game.hudAccumulator >= 0.12) {
@@ -427,7 +395,6 @@ export default function PlayPage() {
         setRemaining(game.remaining);
         setSpeed(data.speed);
         setHeading(data.heading);
-
         setTargetDistance(
           distance(
             data,
@@ -453,7 +420,6 @@ export default function PlayPage() {
 
   return (
     <main className="relative h-[100dvh] min-h-[560px] overflow-hidden bg-[#FFF6E5] text-[#1B1F3B]">
-      {/* 3D game */}
       <div className="absolute inset-0">
         <DrivingScene
           inputs={inputs}
@@ -466,10 +432,8 @@ export default function PlayPage() {
         />
       </div>
 
-      {/* Readability gradient */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-52 bg-gradient-to-b from-[#FFF6E5]/90 to-transparent" />
 
-      {/* Header */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-2 p-4 sm:p-6">
         <Link
           to="/"
@@ -484,78 +448,57 @@ export default function PlayPage() {
         </div>
 
         <div className="flex gap-2">
-          {/* Sound */}
           <button
             type="button"
             onClick={() => setMuted((value) => !value)}
-            aria-label={
-              muted ? "Enable sound" : "Mute sound"
-            }
+            aria-label={muted ? "Enable sound" : "Mute sound"}
             className="pointer-events-auto rounded-full border border-[#1B1F3B] bg-white p-2.5"
           >
-            {muted ? (
-              <VolumeX size={18} />
-            ) : (
-              <Volume2 size={18} />
-            )}
+            {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
 
-          {/* Siren lights */}
           <button
             type="button"
             onClick={() => setSiren((value) => !value)}
-            aria-pressed={siren}
             aria-label="Toggle emergency lights"
-            className={`pointer-events-auto rounded-full border border-[#1B1F3B] p-2.5 ${siren
-                ? "bg-[#FF5A4E]"
-                : "bg-white"
+            aria-pressed={siren}
+            className={`pointer-events-auto rounded-full border border-[#1B1F3B] p-2.5 ${siren ? "bg-[#FF5A4E]" : "bg-white"
               }`}
           >
             <Siren size={18} />
           </button>
 
-          {/* Camera */}
           <button
             type="button"
             onClick={() =>
-              setCameraMode((mode) =>
-                mode === "chase"
+              setCameraMode((previous) =>
+                previous === "chase"
                   ? "cockpit"
-                  : mode === "cockpit"
+                  : previous === "cockpit"
                     ? "overhead"
                     : "chase"
               )
             }
             aria-label={`Switch camera. Current view: ${cameraMode}`}
-            title={`Camera: ${cameraMode}`}
-            className="pointer-events-auto flex items-center gap-1 rounded-full border border-[#1B1F3B] bg-white px-3 py-2.5 text-xs font-extrabold"
+            className="pointer-events-auto flex items-center gap-2 rounded-full border border-[#1B1F3B] bg-white px-3 py-2.5 text-xs font-bold"
           >
             <Camera size={18} />
-
             <span className="hidden sm:inline">
               {cameraMode.toUpperCase()}
             </span>
           </button>
 
-          {/* Minimap */}
           <button
             type="button"
             onClick={() => setShowMap((value) => !value)}
-            aria-label={
-              showMap
-                ? "Hide route map"
-                : "Show route map"
-            }
+            aria-label={showMap ? "Hide map" : "Show map"}
             aria-pressed={showMap}
-            className={`pointer-events-auto rounded-full border border-[#1B1F3B] p-2.5 ${showMap
-                ? "bg-[#FFC93C]"
-                : "bg-white"
+            className={`pointer-events-auto rounded-full border border-[#1B1F3B] p-2.5 ${showMap ? "bg-[#FFC93C]" : "bg-white"
               }`}
           >
-            <MapIcon size={18} />
+            <Map size={18} />
           </button>
 
-          {/* Pause */}
           <button
             type="button"
             onClick={pause}
@@ -568,16 +511,14 @@ export default function PlayPage() {
         </div>
       </header>
 
-      {/* Active gameplay HUD */}
       {mode === "playing" && (
         <>
-          {/* Mission card */}
-          <div className="pointer-events-none absolute left-4 top-20 z-20 max-w-[min(75vw,310px)] rounded-2xl border-2 border-[#1B1F3B] bg-[#FFFDF7]/95 p-4 shadow-[4px_4px_0_#1B1F3B] sm:left-6 sm:top-24">
+          <section className="pointer-events-none absolute left-4 top-20 z-20 max-w-[min(75vw,310px)] rounded-2xl border-2 border-[#1B1F3B] bg-[#FFFDF7]/95 p-4 shadow-[4px_4px_0_#1B1F3B] sm:left-6 sm:top-24">
             <p className="font-mono text-[10px] font-bold uppercase tracking-wider">
               MISSION {mission + 1} OF {TOTAL_MISSIONS}
             </p>
 
-            <h1 className="mt-1 font-display text-xl font-extrabold leading-tight">
+            <h1 className="mt-1 font-display text-xl font-extrabold">
               {stage === "pickup"
                 ? "Reach the patient"
                 : "Return to hospital"}
@@ -585,26 +526,21 @@ export default function PlayPage() {
 
             <p className="mt-1 text-xs">
               {stage === "pickup"
-                ? "Drive to the glowing marker and slow down."
-                : "Deliver the patient to the hospital entrance."}
+                ? "Follow the map and slow down at the marker."
+                : "Deliver the patient to the hospital."}
             </p>
 
             <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
-              <span>
-                ⏱ {Math.ceil(remaining)}s
-              </span>
-
-              <span>
-                ↗ {Math.round(targetDistance)}m
-              </span>
-
-              <span>
-                ★ {score}
-              </span>
+              <span>⏱ {Math.ceil(remaining)}s</span>
+              <span>↗ {Math.round(targetDistance)}m</span>
+              <span>★ {score}</span>
             </div>
-          </div>
 
-          {/* Map and speedometer */}
+            <p className="mt-2 text-[10px] font-semibold text-[#4D7168]">
+              Mission incident synchronized with demo
+            </p>
+          </section>
+
           <div className="pointer-events-none absolute right-4 top-24 z-20 flex flex-col items-end gap-3 sm:right-6">
             {showMap && (
               <div className="pointer-events-auto">
@@ -619,92 +555,58 @@ export default function PlayPage() {
             <div className="rounded-2xl border border-[#1B1F3B] bg-[#FFF6E5]/95 px-4 py-2.5 text-center">
               <div className="font-display text-2xl font-extrabold">
                 {Math.round(speed * 12)}
-
-                <span className="text-[10px]">
-                  {" "}KM/H
-                </span>
+                <span className="text-[10px]"> KM/H</span>
               </div>
-
               <div className="text-[10px] font-bold">
                 {cameraMode.toUpperCase()} VIEW
               </div>
             </div>
           </div>
 
-          {/* Touch controls */}
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20 flex items-end justify-between gap-3 sm:bottom-7 sm:left-7 sm:right-7">
             <div className="pointer-events-auto grid grid-cols-3 gap-1.5">
               <div />
-
-              <TouchButton
-                label="Accelerate"
-                action="forward"
-                inputs={inputs}
-                icon={<ArrowUp />}
-              />
-
+              <TouchButton label="Accelerate" action="forward" inputs={inputs}>
+                <ArrowUp />
+              </TouchButton>
               <div />
-
-              <TouchButton
-                label="Turn left"
-                action="left"
-                inputs={inputs}
-                icon={<ArrowLeft />}
-              />
-
-              <TouchButton
-                label="Brake or reverse"
-                action="back"
-                inputs={inputs}
-                icon={<ArrowDown />}
-              />
-
-              <TouchButton
-                label="Turn right"
-                action="right"
-                inputs={inputs}
-                icon={<ArrowRight />}
-              />
+              <TouchButton label="Turn left" action="left" inputs={inputs}>
+                <ArrowLeft />
+              </TouchButton>
+              <TouchButton label="Reverse" action="back" inputs={inputs}>
+                <ArrowDown />
+              </TouchButton>
+              <TouchButton label="Turn right" action="right" inputs={inputs}>
+                <ArrowRight />
+              </TouchButton>
             </div>
 
             <div className="pointer-events-auto flex flex-col items-end gap-2">
-              <div className="rounded-xl bg-[#1B1F3B]/85 px-3 py-2 text-xs font-bold text-white">
+              <span className="rounded-xl bg-[#1B1F3B]/85 px-3 py-2 text-xs font-bold text-white">
                 COMBO ×{combo + 1}
-              </div>
+              </span>
 
-              <TouchButton
-                label="Handbrake"
-                action="brake"
-                inputs={inputs}
-                icon={
-                  <span className="text-[10px] font-extrabold">
-                    BRAKE
-                  </span>
-                }
-              />
+              <TouchButton label="Handbrake" action="brake" inputs={inputs}>
+                <span className="text-[10px] font-extrabold">BRAKE</span>
+              </TouchButton>
             </div>
           </div>
         </>
       )}
 
-      {/* Menu / Pause / Results / Game over */}
       {mode !== "playing" && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#1B1F3B]/65 p-5">
           <section className="w-full max-w-lg rounded-[26px] border-2 border-[#1B1F3B] bg-[#FFF6E5] p-7 text-center shadow-[7px_8px_0_#1B1F3B] sm:p-10">
             <span className="inline-flex items-center gap-2 rounded-full bg-[#FFC93C] px-4 py-2 text-[11px] font-bold">
-              {mode === "result" ? (
-                <Flag size={17} />
-              ) : (
-                <Siren size={17} />
-              )}
+              {mode === "result" ? <Flag size={17} /> : <Siren size={17} />}
               NEXUS / RESCUE RUN
             </span>
 
-            <h1 className="mt-5 font-display text-4xl font-extrabold leading-tight sm:text-5xl">
+            <h1 className="mt-5 font-display text-4xl font-extrabold sm:text-5xl">
               {mode === "menu"
                 ? "Your city needs you."
                 : mode === "paused"
-                  ? "Taking a breather?"
+                  ? "Mission paused."
                   : mode === "result"
                     ? "Mission complete!"
                     : "Time's up."}
@@ -712,32 +614,30 @@ export default function PlayPage() {
 
             <p className="mx-auto mt-4 max-w-sm text-sm leading-7 text-[#626276]">
               {mode === "menu"
-                ? "Drive the ambulance to each patient, then take them to the hospital. Stay on the roads and watch the clock."
+                ? "Find the patients, drive them to the hospital, and complete each rescue before time runs out."
                 : mode === "paused"
-                  ? "Your timer is stopped. Resume when you're ready."
+                  ? "Your timer is stopped."
                   : mode === "result"
-                    ? `You completed all ${TOTAL_MISSIONS} rescue deliveries. Final score: ${score}. Best: ${best}.`
-                    : `You finished with ${score} points. Try a cleaner route and faster deliveries.`}
+                    ? `You completed ${TOTAL_MISSIONS} missions. Score: ${score}. Personal best: ${best}.`
+                    : `You earned ${score} points. Your unfinished incident remains open in the demo.`}
             </p>
 
             {mode === "menu" && (
-              <div className="mt-5 rounded-xl bg-[#E6F3E9] p-4 text-left text-xs leading-6">
-                <strong>Controls:</strong> WASD or arrow
-                keys to drive · Space to brake · Esc to
-                pause. Use the ROUTE MAP to find your
-                destination. Change CAMERA to cockpit,
-                chase, or overhead. Touch controls appear
-                during play. Stop near a marker to
-                complete a step.
-              </div>
+              <p className="mt-5 rounded-xl bg-[#E6F3E9] p-4 text-left text-xs leading-6">
+                Use WASD or arrow keys to drive, Space to brake,
+                and Esc to pause. Follow the minimap to your
+                destination. Change cameras whenever you like.
+                Missions are stored as fictional incidents in
+                this browser's public demo.
+              </p>
             )}
 
             <div className="mt-7 flex flex-wrap justify-center gap-3">
               {mode === "paused" && (
                 <button
-                  className="nx-button nx-button-yellow"
                   type="button"
                   onClick={resume}
+                  className="nx-button nx-button-yellow"
                 >
                   <CirclePlay size={19} />
                   Resume
@@ -745,26 +645,18 @@ export default function PlayPage() {
               )}
 
               <button
-                className="nx-button nx-button-ink"
                 type="button"
                 onClick={start}
+                className="nx-button nx-button-ink"
               >
-                {mode === "menu" ? (
-                  <CirclePlay size={19} />
-                ) : (
-                  <RotateCcw size={19} />
-                )}
-
                 {mode === "menu"
-                  ? "Start rescue"
-                  : "Restart"}
+                  ? <CirclePlay size={19} />
+                  : <RotateCcw size={19} />}
+                {mode === "menu" ? "Start rescue" : "Restart"}
               </button>
 
-              <Link
-                to="/"
-                className="nx-button nx-button-paper"
-              >
-                Exit
+              <Link to="/preview" className="nx-button nx-button-paper">
+                View incidents
               </Link>
             </div>
           </section>

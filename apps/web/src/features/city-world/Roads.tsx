@@ -1,131 +1,212 @@
 
-import { useMemo } from "react";
 import {
+    BLOCK_CENTERS,
     CITY,
     PALETTE,
     ROAD_INTERSECTIONS,
 } from "./cityLayout";
 
-function Box({
+type Vec3 = [number, number, number];
+
+function Surface({
     position,
-    args,
+    size,
     color,
 }: {
-    position: [number, number, number];
-    args: [number, number, number];
+    position: Vec3;
+    size: Vec3;
     color: string;
 }) {
     return (
         <mesh position={position} receiveShadow>
-            <boxGeometry args={args} />
+            <boxGeometry args={size} />
             <meshStandardMaterial color={color} roughness={0.94} />
         </mesh>
-    );
-}
-
-function RoadMarks() {
-    const dashes = useMemo(
-        () =>
-            Array.from({ length: 41 }, (_, i) => -14.4 + i * 0.72).filter(
-                (position) =>
-                    CITY.roads.every((cross) => Math.abs(position - cross) > 1.6)
-            ),
-        []
-    );
-
-    return (
-        <>
-            {CITY.roads.map((road) => (
-                <group key={road}>
-                    {dashes.map((v) => (
-                        <group key={v}>
-                            <Box
-                                position={[road, 0.047, v]}
-                                args={[0.045, 0.005, 0.32]}
-                                color="#FCE9B1"
-                            />
-                            <Box
-                                position={[v, 0.048, road]}
-                                args={[0.32, 0.005, 0.045]}
-                                color="#FCE9B1"
-                            />
-                        </group>
-                    ))}
-                </group>
-            ))}
-        </>
     );
 }
 
 function Crosswalk({
     x,
     z,
-    alongX,
+    vertical,
 }: {
     x: number;
     z: number;
-    alongX: boolean;
+    vertical: boolean;
 }) {
+    const half = CITY.roadWidth / 2;
+
     return (
         <group>
-            {Array.from({ length: 6 }, (_, index) => {
-                const offset = (index - 2.5) * 0.29;
+            {Array.from({ length: 8 }, (_, index) => {
+                const offset = (index - 3.5) * 0.37;
 
                 return (
-                    <Box
+                    <Surface
                         key={index}
                         position={
-                            alongX
-                                ? [x + offset, 0.06, z]
-                                : [x, 0.06, z + offset]
+                            vertical
+                                ? [x + offset, 0.065, z]
+                                : [x, 0.065, z + offset]
                         }
-                        args={
-                            alongX
-                                ? [0.18, 0.006, 0.37]
-                                : [0.37, 0.006, 0.18]
+                        size={
+                            vertical
+                                ? [0.23, 0.006, 0.44]
+                                : [0.44, 0.006, 0.23]
                         }
-                        color="#FFF9E9"
+                        color="#FFF9EB"
                     />
                 );
             })}
+            {/* The crossing is offset outside the main intersection */}
+            <group position={[0, 0, 0]}>
+                <mesh visible={false} position={[half, 0, 0]}>
+                    <boxGeometry args={[0.01, 0.01, 0.01]} />
+                    <meshBasicMaterial />
+                </mesh>
+            </group>
         </group>
     );
 }
 
-function IntersectionDetails() {
+function RoadNetwork() {
+    const dashPositions = Array.from(
+        { length: 62 },
+        (_, index) => -21.95 + index * 0.72
+    ).filter((position) =>
+        CITY.roads.every(
+            (road) => Math.abs(position - road) > 2.3
+        )
+    );
+
     return (
-        <>
-            {ROAD_INTERSECTIONS.map(([x, z]) => (
-                <group key={`${x}-${z}`}>
-                    <Crosswalk x={x} z={z - 1.47} alongX />
-                    <Crosswalk x={x} z={z + 1.47} alongX />
-                    <Crosswalk x={x - 1.47} z={z} alongX={false} />
-                    <Crosswalk x={x + 1.47} z={z} alongX={false} />
+        <group>
+            {CITY.roads.map((road) => (
+                <group key={road}>
+                    {/* North-south */}
+                    <Surface
+                        position={[road, 0.026, 0]}
+                        size={[CITY.roadWidth, 0.04, CITY.size]}
+                        color={PALETTE.road}
+                    />
+
+                    {/* East-west */}
+                    <Surface
+                        position={[0, 0.027, road]}
+                        size={[CITY.size, 0.04, CITY.roadWidth]}
+                        color={PALETTE.road}
+                    />
+
+                    {/* Dashed centerline */}
+                    {dashPositions.map((position) => (
+                        <group key={`${road}-${position}`}>
+                            <Surface
+                                position={[road, 0.052, position]}
+                                size={[0.045, 0.005, 0.36]}
+                                color="#F6DDA0"
+                            />
+
+                            <Surface
+                                position={[position, 0.053, road]}
+                                size={[0.36, 0.005, 0.045]}
+                                color="#F6DDA0"
+                            />
+                        </group>
+                    ))}
+
+                    {/* Road edge markings */}
+                    {[-1, 1].map((side) => (
+                        <group key={side}>
+                            <Surface
+                                position={[
+                                    road + side * (CITY.roadWidth / 2 - 0.14),
+                                    0.052,
+                                    0,
+                                ]}
+                                size={[0.04, 0.004, CITY.size]}
+                                color="#C5C8BE"
+                            />
+
+                            <Surface
+                                position={[
+                                    0,
+                                    0.053,
+                                    road + side * (CITY.roadWidth / 2 - 0.14),
+                                ]}
+                                size={[CITY.size, 0.004, 0.04]}
+                                color="#C5C8BE"
+                            />
+                        </group>
+                    ))}
                 </group>
             ))}
-        </>
+        </group>
     );
 }
 
-function Roundabout() {
-    // Decorative, non-drivable center for Phase 3.
-    // Phase 4 will define the actual lanes around it.
+function SidewalkPlots() {
+    // 3.72 units fit between roads spaced 7.5 units apart.
+    // This replaces the original oversized 4.9-unit slabs.
+    const plotSize = 3.72;
+
+    return (
+        <group>
+            {BLOCK_CENTERS.flatMap((x) =>
+                BLOCK_CENTERS.map((z) => (
+                    <group key={`${x}-${z}`}>
+                        {/* Narrow curb / foundation */}
+                        <Surface
+                            position={[x, 0.112, z]}
+                            size={[plotSize, 0.115, plotSize]}
+                            color={PALETTE.curb}
+                        />
+
+                        {/* Warm paving instead of bright white */}
+                        <Surface
+                            position={[x, 0.171, z]}
+                            size={[plotSize - 0.10, 0.012, plotSize - 0.10]}
+                            color={PALETTE.pavement}
+                        />
+                    </group>
+                ))
+            )}
+        </group>
+    );
+}
+
+function StreetCrossings() {
+    const offset = CITY.roadWidth / 2 + 0.37;
+
+    return (
+        <group>
+            {ROAD_INTERSECTIONS.map(([x, z]) => (
+                <group key={`${x}-${z}`}>
+                    <Crosswalk x={x} z={z - offset} vertical />
+                    <Crosswalk x={x} z={z + offset} vertical />
+
+                    <Crosswalk x={x - offset} z={z} vertical={false} />
+                    <Crosswalk x={x + offset} z={z} vertical={false} />
+                </group>
+            ))}
+        </group>
+    );
+}
+
+function CenterIsland() {
     return (
         <group position={[-7.5, 0.055, -7.5]}>
-            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <circleGeometry args={[0.78, 48]} />
-                <meshStandardMaterial color="#F4DEAD" />
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[0.75, 40]} />
+                <meshStandardMaterial color="#E8D5AB" />
             </mesh>
-            <mesh position={[0, 0.04, 0]}>
-                <cylinderGeometry args={[0.57, 0.62, 0.12, 48]} />
-                <meshStandardMaterial color="#84BF7D" />
+
+            <mesh position={[0, 0.075, 0]}>
+                <cylinderGeometry args={[0.48, 0.53, 0.13, 36]} />
+                <meshStandardMaterial color="#86C47D" />
             </mesh>
-            <mesh position={[0, 0.19, 0]}>
-                <cylinderGeometry args={[0.11, 0.14, 0.27, 12]} />
-                <meshStandardMaterial color="#EFD7A4" />
-            </mesh>
-            <mesh position={[0, 0.42, 0]}>
-                <sphereGeometry args={[0.22, 16, 12]} />
+
+            <mesh position={[0, 0.27, 0]}>
+                <sphereGeometry args={[0.18, 14, 12]} />
                 <meshStandardMaterial color="#FF8F7A" />
             </mesh>
         </group>
@@ -133,59 +214,24 @@ function Roundabout() {
 }
 
 export default function Roads() {
-    const blockCenters = [-11.25, -3.75, 3.75, 11.25];
-
     return (
         <group>
-            {/* Almost flush ground, no tall floating island */}
-            <mesh position={[0, -0.075, 0]} receiveShadow>
-                <boxGeometry args={[30.3, 0.15, 30.3]} />
-                <meshStandardMaterial color="#DED7C8" />
-            </mesh>
-
-            <Box
-                position={[0, 0.005, 0]}
-                args={[30, 0.012, 30]}
-                color="#E7E5D8"
+            <Surface
+                position={[0, -0.085, 0]}
+                size={[45.5, 0.17, 45.5]}
+                color="#D9D2C2"
             />
 
-            {/* Full-length main roads */}
-            {CITY.roads.map((position) => (
-                <group key={position}>
-                    <Box
-                        position={[position, 0.025, 0]}
-                        args={[CITY.roadWidth, 0.04, 30]}
-                        color={PALETTE.road}
-                    />
-                    <Box
-                        position={[0, 0.028, position]}
-                        args={[30, 0.04, CITY.roadWidth]}
-                        color={PALETTE.road}
-                    />
-                </group>
-            ))}
+            <Surface
+                position={[0, 0.006, 0]}
+                size={[45, 0.012, 45]}
+                color="#C9DFC0"
+            />
 
-            {/* 16 individual city plots, with generous gaps */}
-            {blockCenters.flatMap((x) =>
-                blockCenters.map((z) => (
-                    <group key={`${x}-${z}`}>
-                        <Box
-                            position={[x, 0.085, z]}
-                            args={[4.9, 0.16, 4.9]}
-                            color={PALETTE.curb}
-                        />
-                        <Box
-                            position={[x, 0.169, z]}
-                            args={[4.67, 0.015, 4.67]}
-                            color={PALETTE.pavement}
-                        />
-                    </group>
-                ))
-            )}
-
-            <RoadMarks />
-            <IntersectionDetails />
-            <Roundabout />
+            <RoadNetwork />
+            <SidewalkPlots />
+            <StreetCrossings />
+            <CenterIsland />
         </group>
     );
 }

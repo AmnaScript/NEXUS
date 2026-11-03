@@ -6,6 +6,7 @@ import * as THREE from "three";
 
 import CityWorld from "../city-world/CityWorld";
 import Vehicle from "../vehicles/Vehicle";
+import { checkTrafficCollision } from "../vehicles/trafficSimulation";
 
 import {
   HOSPITAL,
@@ -105,18 +106,23 @@ function Driver({
     speed: 0,
   });
 
+  const playerTrafficRef = useRef({
+    x: START.x,
+    z: START.z,
+    siren: false,
+  });
+
   const cameraPosition = useRef(
-    new THREE.Vector3(START.x, 11, START.z + 10)
+    new THREE.Vector3(START.x, 10, START.z + 9)
   );
 
   const cameraTarget = useRef(
-    new THREE.Vector3(START.x, 1, START.z)
+    new THREE.Vector3(START.x, 1.1, START.z)
   );
 
   const raycaster = useRef(new THREE.Raycaster());
-  const nearCollision = useRef(false);
-
-  const ideal = useRef(new THREE.Vector3());
+  const collisionLatch = useRef(false);
+  const desired = useRef(new THREE.Vector3());
   const focus = useRef(new THREE.Vector3());
   const rayDirection = useRef(new THREE.Vector3());
 
@@ -130,26 +136,28 @@ function Driver({
 
     cameraPosition.current.set(
       START.x,
-      11,
-      START.z + 10
+      10,
+      START.z + 9
     );
 
     cameraTarget.current.set(
       START.x,
-      1,
+      1.1,
       START.z
     );
 
-    nearCollision.current = false;
+    collisionLatch.current = false;
+
+    playerTrafficRef.current.x = START.x;
+    playerTrafficRef.current.z = START.z;
+    playerTrafficRef.current.siren = false;
   }, [resetId]);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.045);
     const state = driving.current;
-
     let collision = false;
 
-    // Driving physics
     if (running) {
       const keys = inputs.current;
 
@@ -162,34 +170,43 @@ function Driver({
         Number(Boolean(keys?.right));
 
       if (throttle !== 0) {
+        const acceleration =
+          throttle > 0 ? 6.2 : 8.0;
+
         state.speed +=
-          throttle *
-          (throttle > 0 ? 6.5 : 8.5) *
-          dt;
+          throttle * acceleration * dt;
       } else {
-        state.speed *= Math.exp(-1.75 * dt);
+        state.speed *= Math.exp(-1.85 * dt);
       }
 
       if (keys?.brake) {
-        state.speed *= Math.exp(-8 * dt);
+        state.speed *= Math.exp(-9.5 * dt);
       }
 
       state.speed = THREE.MathUtils.clamp(
         state.speed,
-        -3.5,
-        10.2
+        -3.2,
+        9.5
       );
 
-      const steerStrength = Math.min(
-        Math.abs(state.speed) / 3.8,
+      if (Math.abs(state.speed) < 0.025) {
+        state.speed = 0;
+      }
+
+      const steerStrength = THREE.MathUtils.clamp(
+        Math.abs(state.speed) / 3.6,
+        0,
         1
       );
 
+      const reverseFactor =
+        state.speed >= 0 ? 1 : -1;
+
       state.yaw +=
         steering *
+        reverseFactor *
         steerStrength *
-        (state.speed >= 0 ? 1 : -1) *
-        1.65 *
+        1.72 *
         dt;
 
       const nextX =
@@ -200,19 +217,31 @@ function Driver({
         state.z +
         Math.cos(state.yaw) * state.speed * dt;
 
-      if (isDrivable(nextX, nextZ)) {
+      const roadAllowed = isDrivable(nextX, nextZ);
+
+      const hitVehicle = checkTrafficCollision(
+        nextX,
+        nextZ,
+        0.38
+      );
+
+      if (roadAllowed && !hitVehicle) {
         state.x = nextX;
         state.z = nextZ;
-        nearCollision.current = false;
+        collisionLatch.current = false;
       } else {
-        state.speed *= -0.22;
+        // Small rebound and loss of momentum.
+        state.speed = -state.speed * 0.14;
 
-        collision = !nearCollision.current;
-        nearCollision.current = true;
+        collision = !collisionLatch.current;
+        collisionLatch.current = true;
       }
     }
 
-    // Update ambulance position
+    playerTrafficRef.current.x = state.x;
+    playerTrafficRef.current.z = state.z;
+    playerTrafficRef.current.siren = running && siren;
+
     if (vehicle.current) {
       vehicle.current.position.set(
         state.x,
@@ -221,90 +250,71 @@ function Driver({
       );
 
       vehicle.current.rotation.y = state.yaw;
-
-      // Hide vehicle mesh in cockpit mode.
-      vehicle.current.visible =
-        cameraMode !== "cockpit";
+      vehicle.current.visible = cameraMode !== "cockpit";
     }
 
     const forwardX = Math.sin(state.yaw);
     const forwardZ = Math.cos(state.yaw);
 
-    const focusPoint = focus.current;
-    const desired = ideal.current;
+    const targetPoint = focus.current;
+    const wanted = desired.current;
 
-    // CAMERA 1: COCKPIT
     if (cameraMode === "cockpit") {
-      desired.set(
-        state.x + forwardX * 0.52,
-        1.23,
-        state.z + forwardZ * 0.52
+      wanted.set(
+        state.x + forwardX * 0.54,
+        1.25,
+        state.z + forwardZ * 0.54
       );
 
-      focusPoint.set(
+      targetPoint.set(
         state.x + forwardX * 12,
-        1.16,
+        1.2,
         state.z + forwardZ * 12
       );
 
       cameraPosition.current.lerp(
-        desired,
+        wanted,
         1 - Math.exp(-14 * dt)
       );
 
       cameraTarget.current.lerp(
-        focusPoint,
-        1 - Math.exp(-13 * dt)
+        targetPoint,
+        1 - Math.exp(-14 * dt)
       );
-    }
-
-    // CAMERA 2: OVERHEAD
-    else if (cameraMode === "overhead") {
-      desired.set(
-        state.x,
-        22,
-        state.z + 0.01
-      );
-
-      focusPoint.set(
-        state.x,
-        0,
-        state.z
-      );
+    } else if (cameraMode === "overhead") {
+      wanted.set(state.x, 24, state.z + 0.01);
+      targetPoint.set(state.x, 0, state.z);
 
       cameraPosition.current.lerp(
-        desired,
+        wanted,
         1 - Math.exp(-6 * dt)
       );
 
       cameraTarget.current.lerp(
-        focusPoint,
+        targetPoint,
         1 - Math.exp(-7 * dt)
       );
-    }
-
-    // CAMERA 3: CHASE
-    else {
-      const anchor = focusPoint.set(
+    } else {
+      const anchor = targetPoint.set(
         state.x,
-        1.45,
+        1.5,
         state.z
       );
 
-      desired.set(
-        state.x - forwardX * 4.2,
-        4.25,
-        state.z - forwardZ * 4.2
+      wanted.set(
+        state.x - forwardX * 3.7,
+        3.8,
+        state.z - forwardZ * 3.7
       );
 
       const direction = rayDirection.current
-        .copy(desired)
+        .copy(wanted)
         .sub(anchor);
 
       const fullDistance = direction.length();
+
       direction.normalize();
 
-      // Pull camera closer if tall geometry obstructs it.
       if (world.current) {
         raycaster.current.set(anchor, direction);
         raycaster.current.far = fullDistance;
@@ -317,28 +327,23 @@ function Driver({
 
         const blocker = hits.find(
           (hit) =>
-            hit.distance > 0.7 &&
-            hit.point.y > 2 &&
-            hit.object.type === "Mesh" &&
-            !(
-              hit.object as THREE.Mesh
-            ).geometry?.type?.includes("Plane")
+            hit.distance > 0.65 &&
+            hit.point.y > 1.9 &&
+            hit.object instanceof THREE.Mesh &&
+            hit.object.geometry?.type !== "PlaneGeometry"
         );
 
         if (blocker) {
-          desired.copy(anchor).addScaledVector(
+          wanted.copy(anchor).addScaledVector(
             direction,
-            Math.max(
-              0.8,
-              blocker.distance - 0.4
-            )
+            Math.max(0.7, blocker.distance - 0.45)
           );
         }
       }
 
       cameraPosition.current.lerp(
-        desired,
-        1 - Math.exp(-7 * dt)
+        wanted,
+        1 - Math.exp(-8 * dt)
       );
 
       cameraTarget.current.lerp(
@@ -350,17 +355,13 @@ function Driver({
     camera.position.copy(cameraPosition.current);
     camera.lookAt(cameraTarget.current);
 
-    // Send movement updates to the game controller.
     if (running) {
       onTick(dt, {
         x: state.x,
         z: state.z,
         heading: state.yaw,
         speed: Math.abs(state.speed),
-        distanceToTarget: distance(
-          state,
-          target
-        ),
+        distanceToTarget: distance(state, target),
         collision,
       });
     }
@@ -369,7 +370,11 @@ function Driver({
   return (
     <>
       <group ref={world}>
-        <CityWorld showTraffic={false} />
+        <CityWorld
+          showTraffic
+          trafficPaused={!running}
+          playerRef={playerTrafficRef}
+        />
       </group>
 
       <group
@@ -386,11 +391,7 @@ function Driver({
       <TargetMarker target={target} />
 
       <mesh
-        position={[
-          HOSPITAL.x,
-          0.045,
-          HOSPITAL.z,
-        ]}
+        position={[HOSPITAL.x, 0.045, HOSPITAL.z]}
         rotation={[-Math.PI / 2, 0, 0]}
       >
         <ringGeometry args={[1.3, 1.4, 48]} />
@@ -411,10 +412,13 @@ export default function DrivingScene(props: Props) {
         position: [0, 10, 14],
         fov: 65,
         near: 0.07,
-        far: 135,
+        far: 170,
       }}
       dpr={[1, 1.5]}
-      gl={{ antialias: true }}
+      gl={{
+        antialias: true,
+        powerPreference: "high-performance",
+      }}
     >
       <Driver {...props} />
     </Canvas>

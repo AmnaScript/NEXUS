@@ -3,10 +3,10 @@ export type Point2 = readonly [number, number];
 export type Point3 = readonly [number, number, number];
 
 export const CITY = {
-    size: 30,
-    half: 15,
-    roads: [-7.5, 0, 7.5] as const,
-    roadWidth: 2.35,
+    size: 45,
+    half: 22.5,
+    roads: [-15, -7.5, 0, 7.5, 15] as readonly number[],
+    roadWidth: 3.7,
     sidewalkHeight: 0.17,
     background: "#FFF6E5",
 } as const;
@@ -21,14 +21,13 @@ export const PALETTE = {
     teal: "#2EC4B6",
     coral: "#FF8F7A",
     road: "#53616E",
-    pavement: "#E7DECB",
-    curb: "#CCC6B8",
+    pavement: "#DED7C5",
+    curb: "#C2BAA8",
     grass: "#99CC8A",
     water: "#6CC9E5",
     glass: "#91DCE1",
 } as const;
 
-// Ground coordinates: X/Z. Y is always elevation.
 export const DISTRICTS = {
     hospital: [-11.25, -11.25] as Point2,
     downtownWest: [-3.75, -11.25] as Point2,
@@ -51,7 +50,6 @@ export const DISTRICTS = {
     park: [11.25, 11.25] as Point2,
 } as const;
 
-// Stable locations for later mission and routing systems.
 export const CITY_LOCATIONS = {
     hospitalEntrance: [-11.25, -8.72] as Point2,
     fireStationEntrance: [11.25, -8.72] as Point2,
@@ -65,6 +63,16 @@ export const ROAD_INTERSECTIONS: Point2[] =
         CITY.roads.map((z) => [x, z] as Point2)
     );
 
-// Reserved for Phase 4 path-following traffic.
-// Roads use the same coordinates as all future vehicles.
-export const ROAD_LANE_OFFSET = 0.55;
+export const ROAD_LANE_OFFSET = 0.85;
+
+export const BLOCK_CENTERS = [
+    -18.75,
+    -11.25,
+    -3.75,
+    3.75,
+    11.25,
+    18.75,
+] as const;
+
+export const ROAD_HALF_WIDTH = CITY.roadWidth / 2;
+export const WORLD_DRIVE_LIMIT = CITY.half - 0.4;

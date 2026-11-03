@@ -1,5 +1,7 @@
+
 import type { Incident } from "./incidents";
 import { supabase } from "../../lib/supabase";
+import { getLocalGameIncidents } from "../rescue-run/gameIncidentBridge";
 
 const API_BASE_URL = (
     import.meta.env.VITE_API_URL || "http://localhost:5000"
@@ -18,7 +20,10 @@ async function authorizedFetch(
     }
 
     const headers = new Headers(options.headers);
-    headers.set("Authorization", `Bearer ${data.session.access_token}`);
+    headers.set(
+        "Authorization",
+        `Bearer ${data.session.access_token}`
+    );
 
     return fetch(url, {
         ...options,
@@ -33,15 +38,20 @@ export async function getIncidents(): Promise<Incident[]> {
         throw new Error("Failed to fetch incidents");
     }
 
-    return response.json();
+    return response.json() as Promise<Incident[]>;
 }
 
 export async function createIncident(
-    data: Pick<Incident, "title" | "location" | "severity" | "coordinates">
+    data: Pick<
+        Incident,
+        "title" | "location" | "severity" | "coordinates"
+    >
 ): Promise<Incident> {
     const response = await authorizedFetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+        },
         body: JSON.stringify(data),
     });
 
@@ -49,7 +59,7 @@ export async function createIncident(
         throw new Error("Failed to create incident");
     }
 
-    return response.json();
+    return response.json() as Promise<Incident>;
 }
 
 export async function updateIncidentStatus(
@@ -60,7 +70,9 @@ export async function updateIncidentStatus(
         `${API_URL}/${encodeURIComponent(id)}/status`,
         {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+            },
             body: JSON.stringify({ status }),
         }
     );
@@ -69,7 +81,7 @@ export async function updateIncidentStatus(
         throw new Error("Failed to update incident status");
     }
 
-    return response.json();
+    return response.json() as Promise<Incident>;
 }
 
 export type IncidentActivity = {
@@ -92,16 +104,41 @@ export async function getIncidentActivities(
         throw new Error("Failed to fetch incident activities");
     }
 
-    return response.json();
+    return response.json() as Promise<IncidentActivity[]>;
 }
+
 export async function getDemoIncidents(): Promise<Incident[]> {
-    const response = await fetch(
-        `${API_BASE_URL}/api/demo/incidents`
-    );
+    const localGameIncidents = getLocalGameIncidents();
 
-    if (!response.ok) {
-        throw new Error("Failed to load demo incidents");
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/demo/incidents`
+        );
+
+        if (!response.ok) {
+            throw new Error("Failed to load demo incidents");
+        }
+
+        const demoIncidents =
+            (await response.json()) as Incident[];
+
+        const localIds = new Set(
+            localGameIncidents.map((item) => item.id)
+        );
+
+        return [
+            ...localGameIncidents,
+            ...demoIncidents.filter(
+                (item) => !localIds.has(item.id)
+            ),
+        ];
+    } catch (error) {
+        // Local gameplay reports can still appear when the
+        // public demo API is temporarily unavailable.
+        if (localGameIncidents.length > 0) {
+            return localGameIncidents;
+        }
+
+        throw error;
     }
-
-    return response.json();
 }

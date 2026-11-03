@@ -1,99 +1,148 @@
 
 import { RoundedBox, Text } from "@react-three/drei";
-import { DISTRICTS, PALETTE } from "./cityLayout";
+import * as THREE from "three";
+import { DISTRICTS } from "./cityLayout";
 
-type V3 = [number, number, number];
+type Vec3 = [number, number, number];
 
-function Block({
+function Box({
     at,
     size,
     color,
 }: {
-    at: V3;
-    size: V3;
+    at: Vec3;
+    size: Vec3;
     color: string;
 }) {
     return (
         <RoundedBox
             position={at}
             args={size}
-            radius={0.055}
+            radius={0.045}
             smoothness={2}
             castShadow
             receiveShadow
         >
-            <meshStandardMaterial color={color} roughness={0.73} />
+            <meshStandardMaterial color={color} roughness={0.72} />
         </RoundedBox>
     );
 }
 
 function Sign({
-    text,
+    label,
     at,
-    color = PALETTE.ink,
-    size = 0.24,
+    size = 0.23,
 }: {
-    text: string;
-    at: V3;
-    color?: string;
+    label: string;
+    at: Vec3;
     size?: number;
 }) {
     return (
         <Text
             position={at}
             fontSize={size}
-            color={color}
+            maxWidth={3.5}
+            color="#1B1F3B"
             anchorX="center"
             anchorY="middle"
-            maxWidth={3.8}
         >
-            {text}
+            {label}
         </Text>
     );
 }
 
-
-function HospitalModel() {
+function Hospital() {
     const [x, z] = DISTRICTS.hospital;
 
     return (
         <group position={[x, 0.18, z]}>
-            <Block at={[0, 2.1, 0]} size={[4.05, 4.2, 3.75]} color="#FFFDF7" />
-            <Block at={[0, 4.29, 0]} size={[4.2, 0.17, 3.9]} color="#E9F0ED" />
+            {/* Model width 3.2, below the 3.72 plot width */}
+            <Box
+                at={[0, 2.08, 0]}
+                size={[3.18, 4.16, 3.05]}
+                color="#FFFCF7"
+            />
 
-            {/* Bands of glass, on all four sides */}
-            {[1.05, 1.93, 2.81, 3.69].map((y) => (
-                <group key={y}>
-                    {[-1.3, -0.45, 0.45, 1.3].map((v) => (
-                        <group key={v}>
-                            <Block at={[v, y, 1.91]} size={[0.59, 0.49, 0.055]} color="#8FD4DC" />
-                            <Block at={[v, y, -1.91]} size={[0.59, 0.49, 0.055]} color="#8FD4DC" />
-                            <Block at={[2.055, y, v]} size={[0.055, 0.49, 0.59]} color="#8FD4DC" />
-                            <Block at={[-2.055, y, v]} size={[0.055, 0.49, 0.59]} color="#8FD4DC" />
+            <Box
+                at={[0, 4.22, 0]}
+                size={[3.32, 0.15, 3.19]}
+                color="#E4F1EC"
+            />
+
+            {Array.from({ length: 4 }, (_, row) => {
+                const y = 0.94 + row * 0.86;
+
+                return [-1.02, -0.34, 0.34, 1.02].map(
+                    (offset) => (
+                        <group key={`${row}-${offset}`}>
+                            <Box
+                                at={[offset, y, 1.56]}
+                                size={[0.43, 0.46, 0.055]}
+                                color="#94D5DE"
+                            />
+                            <Box
+                                at={[offset, y, -1.56]}
+                                size={[0.43, 0.46, 0.055]}
+                                color="#94D5DE"
+                            />
+                            <Box
+                                at={[1.62, y, offset]}
+                                size={[0.055, 0.46, 0.43]}
+                                color="#94D5DE"
+                            />
+                            <Box
+                                at={[-1.62, y, offset]}
+                                size={[0.055, 0.46, 0.43]}
+                                color="#94D5DE"
+                            />
                         </group>
-                    ))}
-                </group>
-            ))}
+                    )
+                );
+            })}
 
-            {/* Red cross */}
-            <Block at={[0, 3.2, 1.97]} size={[0.18, 0.95, 0.07]} color="#FF5A4E" />
-            <Block at={[0, 3.2, 2]} size={[0.82, 0.19, 0.08]} color="#FF5A4E" />
+            <Box
+                at={[0, 0.5, 1.58]}
+                size={[0.86, 0.96, 0.09]}
+                color="#398C9B"
+            />
 
-            {/* Entrance and emergency canopy */}
-            <Block at={[0, 0.55, 1.95]} size={[1.2, 1.1, 0.12]} color="#398999" />
-            <Block at={[0, 1.24, 2.28]} size={[2.2, 0.12, 0.9]} color="#FF8F7A" />
+            <Box
+                at={[0, 1.13, 1.66]}
+                size={[1.6, 0.11, 0.3]}
+                color="#FF8F7A"
+            />
 
-            <Sign text="HOSPITAL" at={[0, 3.9, 1.99]} size={0.23} />
+            <Box
+                at={[0, 3.14, 1.59]}
+                size={[0.16, 0.78, 0.055]}
+                color="#FF5A4E"
+            />
 
-            {/* Rooftop helipad */}
-            <mesh position={[0, 4.41, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[1.25, 40]} />
-                <meshStandardMaterial color="#319A8A" />
-            </mesh>
-            <Text
-                position={[0, 4.43, 0]}
+            <Box
+                at={[0, 3.14, 1.61]}
+                size={[0.72, 0.17, 0.06]}
+                color="#FF5A4E"
+            />
+
+            <Sign
+                label="HOSPITAL"
+                at={[0, 3.83, 1.61]}
+                size={0.2}
+            />
+
+            {/* Helipad remains on the roof */}
+            <mesh
+                position={[0, 4.31, 0]}
                 rotation={[-Math.PI / 2, 0, 0]}
-                fontSize={1.45}
+            >
+                <circleGeometry args={[1.04, 40]} />
+                <meshStandardMaterial color="#309A8C" />
+            </mesh>
+
+            <Text
+                position={[0, 4.33, 0]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                fontSize={1.25}
                 color="white"
             >
                 H
@@ -103,60 +152,65 @@ function HospitalModel() {
 }
 
 function ServiceStation({
-    x,
-    z,
-    title,
-    color,
-    door,
-    bays = 2,
+    position,
+    label,
+    buildingColor,
+    garageColor,
+    bays,
 }: {
-    x: number;
-    z: number;
-    title: string;
-    color: string;
-    door: string;
-    bays?: number;
+    position: readonly [number, number];
+    label: string;
+    buildingColor: string;
+    garageColor: string;
+    bays: number;
 }) {
+    const [x, z] = position;
+    const width = 3.24;
+    const garageWidth = 2.72 / bays;
+
     return (
         <group position={[x, 0.18, z]}>
-            <Block at={[0, 1.3, 0]} size={[4.15, 2.6, 3.8]} color={color} />
-            <Block at={[0, 2.68, 0]} size={[4.3, 0.17, 3.95]} color="#FFFCF4" />
+            <Box
+                at={[0, 1.15, 0]}
+                size={[width, 2.3, 3.12]}
+                color={buildingColor}
+            />
 
-            {Array.from({ length: bays }, (_, i) => {
-                const spacing = 3.2 / bays;
-                const offset = (i - (bays - 1) / 2) * spacing;
+            <Box
+                at={[0, 2.38, 0]}
+                size={[3.37, 0.15, 3.26]}
+                color="#FFFDF2"
+            />
+
+            {Array.from({ length: bays }, (_, index) => {
+                const offset =
+                    (index - (bays - 1) / 2) * garageWidth;
 
                 return (
-                    <group key={i}>
-                        <Block
-                            at={[offset, 0.99, 1.95]}
-                            size={[spacing - 0.18, 1.65, 0.12]}
-                            color={door}
+                    <group key={index}>
+                        <Box
+                            at={[offset, 0.87, 1.59]}
+                            size={[garageWidth - 0.11, 1.45, 0.09]}
+                            color={garageColor}
                         />
-                        {[0.5, 0.9, 1.3].map((y) => (
-                            <Block
+
+                        {[0.5, 0.88, 1.26].map((y) => (
+                            <Box
                                 key={y}
-                                at={[offset, y, 2.018]}
-                                size={[spacing - 0.32, 0.05, 0.025]}
-                                color="#FFF6E5"
+                                at={[offset, y, 1.65]}
+                                size={[garageWidth - 0.24, 0.035, 0.015]}
+                                color="#F9F5E9"
                             />
                         ))}
                     </group>
                 );
             })}
 
-            <Sign text={title} at={[0, 2.27, 1.98]} size={0.27} />
+            <Sign label={label} at={[0, 2.07, 1.62]} size={0.23} />
 
-            {/* Antenna */}
-            <mesh position={[1.3, 3.14, -0.9]}>
-                <cylinderGeometry args={[0.025, 0.04, 0.85, 8]} />
-                <meshStandardMaterial color="#4D5B6D" />
-            </mesh>
-
-            {/* Small front sign pole */}
-            <mesh position={[-1.65, 0.55, 2.05]}>
-                <cylinderGeometry args={[0.035, 0.045, 1.1, 8]} />
-                <meshStandardMaterial color="#48546B" />
+            <mesh position={[1.08, 2.79, -0.67]}>
+                <cylinderGeometry args={[0.025, 0.035, 0.76, 8]} />
+                <meshStandardMaterial color="#485869" />
             </mesh>
         </group>
     );
@@ -167,45 +221,65 @@ function Cafe() {
 
     return (
         <group position={[x, 0.18, z]}>
-            <Block at={[0, 1.04, -0.58]} size={[3.7, 2.08, 2.75]} color="#FFDEAC" />
-            <Block at={[0, 2.15, -0.58]} size={[3.92, 0.17, 2.94]} color="#F7A45C" />
+            <Box
+                at={[0, 0.97, -0.48]}
+                size={[3.14, 1.94, 2.27]}
+                color="#FFDBAC"
+            />
 
-            {/* Front windows and door */}
-            <Block at={[-0.83, 0.73, 0.83]} size={[1.03, 1.2, 0.08]} color="#83C8D1" />
-            <Block at={[0.83, 0.73, 0.83]} size={[1.03, 1.2, 0.08]} color="#83C8D1" />
-            <Block at={[0, 0.55, 0.88]} size={[0.57, 1.1, 0.09]} color="#66505B" />
+            <Box
+                at={[0, 2.01, -0.48]}
+                size={[3.29, 0.15, 2.43]}
+                color="#F3A15D"
+            />
 
-            {/* Canopy with stripes */}
-            <Block at={[0, 1.68, 1.15]} size={[3.82, 0.16, 0.8]} color="#FF5A4E" />
-            {[-1.35, -0.45, 0.45, 1.35].map((v) => (
-                <Block
-                    key={v}
-                    at={[v, 1.78, 1.15]}
-                    size={[0.36, 0.02, 0.8]}
-                    color="#FFF4E0"
+            {[-0.79, 0.79].map((offset) => (
+                <Box
+                    key={offset}
+                    at={[offset, 0.72, 0.7]}
+                    size={[0.77, 1.02, 0.06]}
+                    color="#91D1D8"
                 />
             ))}
 
-            <Sign text="SUNNY SIDE CAFÉ" at={[0, 1.98, 0.9]} size={0.23} />
+            <Box
+                at={[0, 0.53, 0.74]}
+                size={[0.47, 1.05, 0.07]}
+                color="#574C58"
+            />
 
-            {/* Outdoor tables */}
-            {[-1, 1].map((v) => (
-                <group key={v} position={[v * 1.0, 0, 1.65]}>
-                    <mesh position={[0, 0.43, 0]}>
-                        <cylinderGeometry args={[0.36, 0.36, 0.07, 14]} />
-                        <meshStandardMaterial color="#FFFCF4" />
+            <Box
+                at={[0, 1.55, 0.97]}
+                size={[3.18, 0.12, 0.54]}
+                color="#FF5A4E"
+            />
+
+            <Sign
+                label="SUNNY SIDE CAFÉ"
+                at={[0, 1.87, 0.75]}
+                size={0.2}
+            />
+
+            {/* Outdoor seating stays within the plot */}
+            {[-0.92, 0.92].map((offset) => (
+                <group key={offset} position={[offset, 0, 1.42]}>
+                    <mesh position={[0, 0.4, 0]}>
+                        <cylinderGeometry args={[0.26, 0.26, 0.065, 12]} />
+                        <meshStandardMaterial color="#FFF8E9" />
                     </mesh>
-                    <mesh position={[0, 0.27, 0]}>
-                        <cylinderGeometry args={[0.035, 0.045, 0.38, 8]} />
-                        <meshStandardMaterial color="#555C65" />
+                    <mesh position={[0, 0.23, 0]}>
+                        <cylinderGeometry args={[0.025, 0.035, 0.37, 8]} />
+                        <meshStandardMaterial color="#596571" />
                     </mesh>
-                    <mesh position={[0, 1.15, 0]}>
-                        <coneGeometry args={[0.6, 0.32, 12]} />
-                        <meshStandardMaterial color={v === -1 ? "#FF5A4E" : "#FFC93C"} />
+                    <mesh position={[0, 1.05, 0]}>
+                        <coneGeometry args={[0.45, 0.25, 12]} />
+                        <meshStandardMaterial
+                            color={offset < 0 ? "#FFC93C" : "#FF8F7A"}
+                        />
                     </mesh>
-                    <mesh position={[0, 0.77, 0]}>
-                        <cylinderGeometry args={[0.035, 0.035, 0.6, 8]} />
-                        <meshStandardMaterial color="#555C65" />
+                    <mesh position={[0, 0.75, 0]}>
+                        <cylinderGeometry args={[0.022, 0.022, 0.55, 8]} />
+                        <meshStandardMaterial color="#596571" />
                     </mesh>
                 </group>
             ))}
@@ -218,40 +292,78 @@ function Park() {
 
     return (
         <group position={[x, 0.18, z]}>
-            <Block at={[0, 0.06, 0]} size={[4.5, 0.1, 4.5]} color="#8CCB84" />
+            <Box
+                at={[0, 0.045, 0]}
+                size={[3.52, 0.09, 3.52]}
+                color="#8FCB86"
+            />
 
-            {/* Walking paths */}
-            <mesh position={[0, 0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[1.45, 1.74, 50]} />
-                <meshStandardMaterial color="#FDE8B9" side={2} />
+            <mesh
+                position={[-0.42, 0.1, -0.27]}
+                rotation={[-Math.PI / 2, 0, 0]}
+            >
+                <circleGeometry args={[0.83, 32]} />
+                <meshStandardMaterial
+                    color="#71CBE5"
+                    roughness={0.3}
+                />
             </mesh>
 
-            {/* Pond */}
-            <mesh position={[-0.45, 0.135, -0.18]} rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.95, 36]} />
-                <meshStandardMaterial color={PALETTE.water} roughness={0.22} />
+            <mesh
+                position={[-0.42, 0.105, -0.27]}
+                rotation={[-Math.PI / 2, 0, 0]}
+            >
+                <ringGeometry args={[0.82, 0.91, 32]} />
+                <meshStandardMaterial
+                    color="#F3E6C5"
+                    side={THREE.DoubleSide}
+                />
             </mesh>
 
-            <mesh position={[-0.45, 0.15, -0.18]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[0.94, 1.05, 36]} />
-                <meshStandardMaterial color="#F2EBD5" side={2} />
-            </mesh>
+            {/* Playground */}
+            <Box
+                at={[0.91, 0.42, 0.83]}
+                size={[0.53, 0.12, 0.57]}
+                color="#FFC93C"
+            />
 
-            {/* Playground slide */}
-            <Block at={[1.25, 0.55, 0.95]} size={[0.62, 0.12, 0.7]} color="#FFC93C" />
-            <mesh position={[1.25, 0.43, 1.33]} rotation={[0.55, 0, 0]}>
-                <boxGeometry args={[0.5, 0.06, 0.9]} />
+            <mesh
+                position={[0.91, 0.35, 1.13]}
+                rotation={[0.48, 0, 0]}
+            >
+                <boxGeometry args={[0.44, 0.06, 0.67]} />
                 <meshStandardMaterial color="#FF5A4E" />
             </mesh>
-            {[-0.23, 0.23].map((v) => (
-                <Block key={v} at={[1.25 + v, 0.33, 0.75]} size={[0.06, 0.6, 0.06]} color="#54756A" />
-            ))}
 
-            {/* Bench */}
-            <Block at={[-1.3, 0.43, 1.15]} size={[0.8, 0.1, 0.25]} color="#B17E56" />
-            <Block at={[-1.3, 0.7, 1.33]} size={[0.8, 0.48, 0.08]} color="#B17E56" />
-            {[-0.3, 0.3].map((v) => (
-                <Block key={v} at={[-1.3 + v, 0.24, 1.15]} size={[0.07, 0.34, 0.07]} color="#475961" />
+            {/* Benches */}
+            <Box
+                at={[-1.22, 0.37, 1.12]}
+                size={[0.66, 0.1, 0.23]}
+                color="#B47B51"
+            />
+            <Box
+                at={[-1.22, 0.61, 1.28]}
+                size={[0.66, 0.4, 0.07]}
+                color="#B47B51"
+            />
+
+            {[
+                [1.25, -1.22],
+                [-1.25, 1.35],
+            ].map(([tx, tz], i) => (
+                <group key={i} position={[tx, 0, tz]}>
+                    <mesh position={[0, 0.49, 0]}>
+                        <cylinderGeometry args={[0.07, 0.09, 0.79, 8]} />
+                        <meshStandardMaterial color="#86664D" />
+                    </mesh>
+                    <mesh position={[0, 1.06, 0]} castShadow>
+                        <icosahedronGeometry args={[0.47, 1]} />
+                        <meshStandardMaterial
+                            color={i === 0 ? "#4EA771" : "#72C57A"}
+                            flatShading
+                        />
+                    </mesh>
+                </group>
             ))}
         </group>
     );
@@ -260,23 +372,21 @@ function Park() {
 export default function Landmarks() {
     return (
         <group>
-            <HospitalModel />
+            <Hospital />
 
             <ServiceStation
-                x={DISTRICTS.fireStation[0]}
-                z={DISTRICTS.fireStation[1]}
-                title="FIRE STATION"
-                color="#F5B4A0"
-                door="#E65F54"
+                position={DISTRICTS.fireStation}
+                label="FIRE STATION"
+                buildingColor="#F4B1A2"
+                garageColor="#E35C53"
                 bays={3}
             />
 
             <ServiceStation
-                x={DISTRICTS.police[0]}
-                z={DISTRICTS.police[1]}
-                title="POLICE"
-                color="#D5E4F2"
-                door="#568AA7"
+                position={DISTRICTS.police}
+                label="POLICE"
+                buildingColor="#D6E4F3"
+                garageColor="#5A91AE"
                 bays={2}
             />
 
