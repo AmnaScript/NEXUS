@@ -1,12 +1,17 @@
 
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 import type { RefObject } from "react";
+import { useFrame } from "@react-three/fiber";
 
 import Roads from "./Roads";
 import Architecture from "./Architecture";
 import Landmarks from "./Landmarks";
 import Environment from "./Environment";
 import OuterDistricts from "./OuterDistricts";
+import TrafficSignals from "./TrafficSignals";
+
+import type { TrafficClockState } from "./TrafficSignals";
+
 import CityTraffic from "../vehicles/CityTraffic";
 
 type PlayerTrafficInfo = {
@@ -21,11 +26,31 @@ type Props = {
     playerRef?: RefObject<PlayerTrafficInfo>;
 };
 
+function SimulationClock({
+    timeRef,
+    paused,
+}: {
+    timeRef: RefObject<TrafficClockState>;
+    paused: boolean;
+}) {
+    useFrame((_, delta) => {
+        if (!paused) {
+            timeRef.current.seconds += Math.min(delta, 0.045);
+        }
+    }, -3);
+
+    return null;
+}
+
 export default function CityWorld({
     showTraffic = true,
     trafficPaused = false,
     playerRef,
 }: Props) {
+    const timeRef = useRef<TrafficClockState>({
+        seconds: 0,
+    });
+
     return (
         <group>
             <color attach="background" args={["#FFF6E5"]} />
@@ -49,6 +74,11 @@ export default function CityWorld({
                 shadow-camera-bottom={-25}
             />
 
+            <SimulationClock
+                timeRef={timeRef}
+                paused={trafficPaused}
+            />
+
             <Suspense fallback={null}>
                 <Roads />
                 <Architecture />
@@ -56,10 +86,13 @@ export default function CityWorld({
                 <OuterDistricts />
                 <Environment />
 
+                <TrafficSignals timeRef={timeRef} />
+
                 {showTraffic && (
                     <CityTraffic
                         paused={trafficPaused}
                         playerRef={playerRef}
+                        timeRef={timeRef}
                     />
                 )}
             </Suspense>
