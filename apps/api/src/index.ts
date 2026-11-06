@@ -69,10 +69,12 @@ app.use(errorHandler);
 
 const PORT = Number(process.env.PORT || 5000);
 
-if (!process.env.VERCEL) {
-    const PORT = Number(process.env.PORT || 5000);
+export default app;
 
-    app.listen(PORT, "0.0.0.0", () => {
-        console.log(`NEXUS API running on port ${PORT}`);
-    });
+if (!process.env.VERCEL) {
+  const PORT = Number(process.env.PORT || 5000);
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`NEXUS API running on port ${PORT}`);
+  });
 }
