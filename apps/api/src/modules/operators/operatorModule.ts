@@ -87,7 +87,11 @@ export function createOperatorModule(prisma: PrismaClient) {
             res.locals.nexusOperator = account;
             next();
         } catch (error) {
-            next(error);
+            // Database or Supabase outage: report as 503 JSON, never as a 403.
+            console.error("Operator verification failed:", error);
+            res.status(503).json({
+                error: "Authorization service is temporarily unavailable",
+            });
         }
     };
 
