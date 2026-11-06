@@ -336,6 +336,12 @@ export default function LoginPage() {
                     )}
                   </button>
                 </div>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-bold text-[#D64D43] underline"
+                >
+                  Forgot password?
+                </Link>
               </div>
 
               {error && (

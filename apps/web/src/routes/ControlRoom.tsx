@@ -43,6 +43,8 @@ import {
 } from "../features/incidents/incidentApi";
 
 import { supabase } from "../lib/supabase";
+import OperatorAlertsButton from "../features/incidents/OperatorAlertsButton";
+import { operatorApi } from "../lib/operatorApi";
 
 type Props = { preview?: boolean };
 type View = "overview" | "analytics" | "settings";
@@ -173,6 +175,9 @@ export default function ControlRoom({ preview = false }: Props) {
     const [settings, setSettings] = useState<ControlRoomSettings>(
         readControlRoomSettings
     );
+    const [settingsLoading, setSettingsLoading] = useState(!preview);
+    const [settingsSaving, setSettingsSaving] = useState(false);
+    const [settingsError, setSettingsError] = useState("");
 
     const [seenAlerts, setSeenAlerts] = useState<string[]>(
         readSeenAlerts
@@ -253,14 +258,93 @@ export default function ControlRoom({ preview = false }: Props) {
         };
     }, [preview, loadIncidents]);
 
-    // Browser-local display settings
+    // Public preview uses browser-local settings; operators use PostgreSQL.
     useEffect(() => {
-        saveControlRoomSettings(settings);
-    }, [settings]);
+        if (preview) saveControlRoomSettings(settings);
+    }, [preview, settings]);
+
+    useEffect(() => {
+        if (preview) return;
+        let mounted = true;
+
+        void operatorApi.me().then((account) => {
+            if (!mounted) return;
+            setSettings({
+                compactCards: account.preferences.compactCards,
+                highlightHighPriority: account.preferences.highlightHighPriority,
+                autoRefresh: account.preferences.autoRefresh,
+            });
+            setSettingsError("");
+        }).catch((cause: unknown) => {
+            if (!mounted) return;
+            setSettingsError(cause instanceof Error
+                ? `Unable to load operator preferences: ${cause.message}`
+                : "Unable to load operator preferences.");
+        }).finally(() => {
+            if (mounted) setSettingsLoading(false);
+        });
+
+        return () => { mounted = false; };
+    }, [preview]);
+
+    async function changeOperatorSettings(next: ControlRoomSettings) {
+        if (preview) {
+            setSettings(next);
+            return;
+        }
+        if (settingsLoading || settingsSaving) return;
+        setSettingsSaving(true);
+        setSettingsError("");
+        try {
+            const account = await operatorApi.me();
+            const saved = await operatorApi.savePreferences({
+                compactCards: next.compactCards,
+                highlightHighPriority: next.highlightHighPriority,
+                autoRefresh: next.autoRefresh,
+                notificationsEnabled: account.preferences.notificationsEnabled,
+            });
+            setSettings({
+                compactCards: saved.compactCards,
+                highlightHighPriority: saved.highlightHighPriority,
+                autoRefresh: saved.autoRefresh,
+            });
+        } catch (cause) {
+            setSettingsError(cause instanceof Error
+                ? `Unable to save operator preferences: ${cause.message}`
+                : "Unable to save operator preferences.");
+        } finally {
+            setSettingsSaving(false);
+        }
+    }
+
+    async function openOperatorAlert(incidentId: string) {
+        setView("overview");
+        setFilter("All");
+        setMobileMenuOpen(false);
+        const found = incidents.find((incident) => incident.id === incidentId);
+        if (found) {
+            setSelectedIncident(found);
+            return;
+        }
+        // The alert may refer to an incident created since the last refresh.
+        try {
+            const data = await getIncidents();
+            setIncidents(data);
+            const fresh = data.find((incident) => incident.id === incidentId);
+            if (fresh) {
+                setSelectedIncident(fresh);
+                setError("");
+            } else {
+                setError("This incident is no longer available in the current queue.");
+            }
+        } catch {
+            setError("Couldn't load the incident from this notification. Refresh and try again.");
+        }
+    }
 
     // Optional automatic refresh, every 60 seconds.
     useEffect(() => {
-        if (!settings.autoRefresh) return;
+        if (!settings.autoRefresh || (!preview && settingsLoading)) return;
 
         const interval = window.setInterval(() => {
             void loadIncidents().catch(() => {
@@ -269,7 +353,7 @@ export default function ControlRoom({ preview = false }: Props) {
         }, 60000);
 
         return () => window.clearInterval(interval);
-    }, [settings.autoRefresh, loadIncidents]);
+    }, [settings.autoRefresh, settingsLoading, preview, loadIncidents]);
 
     async function refreshIncidents() {
         if (refreshing || loading) return;
@@ -474,6 +558,16 @@ export default function ControlRoom({ preview = false }: Props) {
 
                     {!preview && (
                         <Link
+                            to="/operator"
+                            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-[#C2C4D3] hover:bg-white/10 hover:text-white"
+                        >
+                            <ShieldCheck size={19} />
+                            My account & team
+                        </Link>
+                    )}
+
+                    {!preview && (
+                        <Link
                             to="/preview"
                             className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-[#C2C4D3] hover:bg-white/10 hover:text-white"
                         >
@@ -552,6 +646,16 @@ export default function ControlRoom({ preview = false }: Props) {
                             Back to website
                         </Link>
 
+                        {!preview && (
+                            <Link
+                                to="/operator"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="rounded-lg px-3 py-3 text-sm font-bold"
+                            >
+                                My account & team
+                            </Link>
+                        )}
+
                         {preview ? (
                             <Link
                                 to="/login"
@@ -595,99 +699,107 @@ export default function ControlRoom({ preview = false }: Props) {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2.5">
-                            {/* Notifications */}
-                            <div className="relative">
-                                <button
-                                    type="button"
-                                    onClick={() => setAlertsOpen((value) => !value)}
-                                    aria-label={`Incident alerts, ${unreadCount} unread`}
-                                    aria-expanded={alertsOpen}
-                                    className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#D7CEBE] bg-white hover:border-[#1B1F3B]"
-                                >
-                                    <Bell size={18} />
-                                    {unreadCount > 0 && (
-                                        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF5A4E] px-1 text-[10px] font-extrabold text-white">
-                                            {unreadCount > 9 ? "9+" : unreadCount}
-                                        </span>
-                                    )}
-                                </button>
-
-                                {alertsOpen && (
-                                    <div className="absolute right-0 top-14 z-40 w-[min(88vw,360px)] overflow-hidden rounded-[18px] border-2 border-[#1B1F3B] bg-[#FFFCF5] shadow-[5px_6px_0_#1B1F3B]">
-                                        <div className="flex items-center justify-between gap-3 border-b border-[#E4DDD0] px-4 py-4">
-                                            <div>
-                                                <h2 className="nx-display text-lg font-extrabold">
-                                                    Incident alerts
-                                                </h2>
-                                                <p className="mt-1 text-[11px] text-[#777587]">
-                                                    {unreadCount} unread
-                                                </p>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                onClick={markAllSeen}
-                                                disabled={unreadCount === 0}
-                                                className="flex items-center gap-1 text-[11px] font-bold disabled:opacity-50"
-                                            >
-                                                <Check size={14} />
-                                                Mark read
-                                            </button>
-                                        </div>
-
-                                        <div className="max-h-[350px] overflow-y-auto p-2">
-                                            {alerts.length === 0 ? (
-                                                <div className="px-4 py-10 text-center">
-                                                    <CheckCircle2
-                                                        size={27}
-                                                        className="mx-auto text-[#3DBE7A]"
-                                                    />
-                                                    <p className="mt-3 text-sm font-bold">
-                                                        No current alerts
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                alerts.slice(0, 20).map((incident) => {
-                                                    const unread = !seenAlerts.includes(incident.id);
-
-                                                    return (
-                                                        <button
-                                                            key={incident.id}
-                                                            type="button"
-                                                            onClick={() => openAlert(incident)}
-                                                            className={`mb-1 w-full rounded-xl border p-3 text-left hover:border-[#1B1F3B] ${unread
-                                                                ? "border-[#EBC4AC] bg-[#FFF1E4]"
-                                                                : "border-transparent bg-white"
-                                                                }`}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <span
-                                                                    className={`h-2 w-2 shrink-0 rounded-full ${unread
-                                                                        ? "bg-[#FF5A4E]"
-                                                                        : "bg-[#C8C3B9]"
-                                                                        }`}
-                                                                />
-                                                                <span className="truncate text-xs font-extrabold">
-                                                                    {incident.title}
-                                                                </span>
-                                                            </div>
-
-                                                            <p className="mt-2 pl-4 text-[11px] text-[#777587]">
-                                                                {incident.severity} priority · {incident.status}
-                                                            </p>
-                                                        </button>
-                                                    );
-                                                })
+                            {/* Read receipts are account-backed for operators; local only for preview. */}
+                            {preview ? (
+                                <>
+                                    {/* Notifications */}
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAlertsOpen((value) => !value)}
+                                            aria-label={`Incident alerts, ${unreadCount} unread`}
+                                            aria-expanded={alertsOpen}
+                                            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#D7CEBE] bg-white hover:border-[#1B1F3B]"
+                                        >
+                                            <Bell size={18} />
+                                            {unreadCount > 0 && (
+                                                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF5A4E] px-1 text-[10px] font-extrabold text-white">
+                                                    {unreadCount > 9 ? "9+" : unreadCount}
+                                                </span>
                                             )}
-                                        </div>
+                                        </button>
 
-                                        <div className="border-t border-[#E4DDD0] px-4 py-3 text-[10px] leading-5 text-[#777587]">
-                                            Alerts are based on loaded incidents. Read
-                                            state is saved in this browser.
-                                        </div>
+                                        {alertsOpen && (
+                                            <div className="absolute right-0 top-14 z-40 w-[min(88vw,360px)] overflow-hidden rounded-[18px] border-2 border-[#1B1F3B] bg-[#FFFCF5] shadow-[5px_6px_0_#1B1F3B]">
+                                                <div className="flex items-center justify-between gap-3 border-b border-[#E4DDD0] px-4 py-4">
+                                                    <div>
+                                                        <h2 className="nx-display text-lg font-extrabold">
+                                                            Incident alerts
+                                                        </h2>
+                                                        <p className="mt-1 text-[11px] text-[#777587]">
+                                                            {unreadCount} unread
+                                                        </p>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={markAllSeen}
+                                                        disabled={unreadCount === 0}
+                                                        className="flex items-center gap-1 text-[11px] font-bold disabled:opacity-50"
+                                                    >
+                                                        <Check size={14} />
+                                                        Mark read
+                                                    </button>
+                                                </div>
+
+                                                <div className="max-h-[350px] overflow-y-auto p-2">
+                                                    {alerts.length === 0 ? (
+                                                        <div className="px-4 py-10 text-center">
+                                                            <CheckCircle2
+                                                                size={27}
+                                                                className="mx-auto text-[#3DBE7A]"
+                                                            />
+                                                            <p className="mt-3 text-sm font-bold">
+                                                                No current alerts
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        alerts.slice(0, 20).map((incident) => {
+                                                            const unread = !seenAlerts.includes(incident.id);
+
+                                                            return (
+                                                                <button
+                                                                    key={incident.id}
+                                                                    type="button"
+                                                                    onClick={() => openAlert(incident)}
+                                                                    className={`mb-1 w-full rounded-xl border p-3 text-left hover:border-[#1B1F3B] ${unread
+                                                                        ? "border-[#EBC4AC] bg-[#FFF1E4]"
+                                                                        : "border-transparent bg-white"
+                                                                        }`}
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span
+                                                                            className={`h-2 w-2 shrink-0 rounded-full ${unread
+                                                                                ? "bg-[#FF5A4E]"
+                                                                                : "bg-[#C8C3B9]"
+                                                                                }`}
+                                                                        />
+                                                                        <span className="truncate text-xs font-extrabold">
+                                                                            {incident.title}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <p className="mt-2 pl-4 text-[11px] text-[#777587]">
+                                                                        {incident.severity} priority · {incident.status}
+                                                                    </p>
+                                                                </button>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+
+                                                <div className="border-t border-[#E4DDD0] px-4 py-3 text-[10px] leading-5 text-[#777587]">
+                                                    Alerts are based on loaded incidents. Read
+                                                    state is saved in this browser.
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
+
+                                </>
+                            ) : (
+                                <OperatorAlertsButton onOpenIncident={(id) => void openOperatorAlert(id)} />
+                            )}
 
                             <button
                                 type="button"
@@ -1044,11 +1156,38 @@ export default function ControlRoom({ preview = false }: Props) {
 
                     {view === "settings" && (
                         <section className="mt-8">
-                            <ControlRoomPreferences
-                                settings={settings}
-                                onChange={setSettings}
-                                preview={preview}
-                            />
+                            {settingsLoading && !preview ? (
+                                <p className="flex items-center gap-2 text-sm" role="status">
+                                    <LoaderCircle size={18} className="animate-spin" />
+                                    Loading operator preferences...
+                                </p>
+                            ) : (
+                                <>
+                                    {settingsError && (
+                                        <div role="alert" className="mb-4 rounded-xl border border-[#EFBBB4] bg-[#FFE3DD] p-4 text-sm text-[#9F3833]">
+                                            {settingsError}
+                                            {!preview && (
+                                                <Link to="/operator" className="ml-2 font-bold underline">
+                                                    Open account settings
+                                                </Link>
+                                            )}
+                                        </div>
+                                    )}
+                                    {settingsSaving && (
+                                        <p role="status" className="mb-3 flex items-center gap-2 text-sm text-[#686778]">
+                                            <LoaderCircle size={16} className="animate-spin" />
+                                            Saving preferences...
+                                        </p>
+                                    )}
+                                    <div className={settingsSaving ? "pointer-events-none opacity-60" : ""}>
+                                        <ControlRoomPreferences
+                                            settings={settings}
+                                            onChange={(next) => void changeOperatorSettings(next)}
+                                            preview={preview}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </section>
                     )}
 
