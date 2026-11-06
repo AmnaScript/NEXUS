@@ -48,21 +48,24 @@ export type NotificationResponse = {
     unread: number;
 };
 
+export class OperatorApiError extends Error {
+    status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = "OperatorApiError";
+        this.status = status;
+    }
+}
+
 export async function operatorRequest<T>(
     path: string,
     options: RequestInit = {}
 ): Promise<T> {
     const { data, error } = await supabase.auth.getSession();
 
-    const verification = await supabase.auth.getUser();
-
-    console.log("Supabase Auth verification:", {
-        valid: !verification.error && Boolean(verification.data.user),
-        error: verification.error?.message,
-    });
-
     if (error || !data.session?.access_token) {
-        throw new Error("Please sign in to continue.");
+        throw new OperatorApiError("Please sign in to continue.", 401);
     }
 
     const headers = new Headers(options.headers);
@@ -76,10 +79,20 @@ export async function operatorRequest<T>(
         headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(
-        `${API_BASE}/api/operator${path}`,
-        { ...options, headers }
-    );
+    let response: Response;
+
+    try {
+        response = await fetch(
+            `${API_BASE}/api/operator${path}`,
+            { ...options, headers }
+        );
+    } catch {
+        // Network failure, wrong VITE_API_URL, or CORS block.
+        throw new OperatorApiError(
+            "Cannot reach the NEXUS API. Check VITE_API_URL and that the API is running.",
+            0
+        );
+    }
 
     const payload: unknown = await response.json().catch(() => null);
 
@@ -92,7 +105,7 @@ export async function operatorRequest<T>(
                 ? payload.error
                 : `Request failed (${response.status})`;
 
-        throw new Error(message);
+        throw new OperatorApiError(message, response.status);
     }
 
     return payload as T;

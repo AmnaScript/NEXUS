@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { ShieldAlert } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { operatorApi } from "../lib/operatorApi";
+import { operatorApi, OperatorApiError } from "../lib/operatorApi";
 import RouteLoading from "./RouteLoading";
 
 type AccessState = "checking" | "allowed" | "login" | "denied" | "error";
@@ -15,6 +15,7 @@ export default function ProtectedRoute({
     children: ReactNode;
 }) {
     const [state, setState] = useState<AccessState>("checking");
+    const [detail, setDetail] = useState("");
 
     useEffect(() => {
         let active = true;
@@ -36,21 +37,30 @@ export default function ProtectedRoute({
                 } catch (cause) {
                     if (!active) return;
 
-                    if (
-                        cause instanceof Error &&
-                        (
-                            cause.message.includes("operator access") ||
-                            cause.message.includes("Administrator access") ||
-                            cause.message.includes("403")
-                        )
-                    ) {
-                        setState("denied");
+                    if (cause instanceof OperatorApiError) {
+                        if (cause.status === 401) {
+                            // Expired or invalid session: sign in again.
+                            setState("login");
+                            return;
+                        }
+
+                        if (cause.status === 403) {
+                            setState("denied");
+                            return;
+                        }
+
+                        setDetail(cause.message);
                     } else {
-                        setState("error");
+                        setDetail("Unexpected error while verifying access.");
                     }
+
+                    setState("error");
                 }
             } catch {
-                if (active) setState("error");
+                if (active) {
+                    setDetail("Unexpected error while verifying access.");
+                    setState("error");
+                }
             }
         }
 
@@ -98,7 +108,8 @@ export default function ProtectedRoute({
                 <p className="mt-4 text-sm leading-7 text-[#686778]">
                     {state === "denied"
                         ? "Your Supabase account is signed in, but it does not have active operator permission."
-                        : "NEXUS could not reach the authorization service. Try reloading when the API is available."}
+                        : detail ||
+                          "NEXUS could not reach the authorization service. Try reloading when the API is available."}
                 </p>
 
                 <div className="mt-7 flex flex-wrap gap-3">
