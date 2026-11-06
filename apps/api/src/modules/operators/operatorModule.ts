@@ -64,7 +64,20 @@ export function createOperatorModule(prisma: PrismaClient) {
             const { data, error } = await supabaseAdmin.auth.getUser(token);
 
             if (error || !data.user) {
-                res.status(401).json({ error: "Invalid or expired session" });
+                console.error("Operator authentication failed:", {
+                    message: error?.message,
+                    status: error?.status,
+                    code: error?.code,
+                    supabaseUrlConfigured: Boolean(process.env.SUPABASE_URL),
+                    secretConfigured: Boolean(
+                        process.env.SUPABASE_SECRET_KEY ||
+                        process.env.SUPABASE_SERVICE_ROLE_KEY
+                    ),
+                });
+
+                res.status(401).json({
+                    error: "Invalid or expired session",
+                });
                 return;
             }
 
