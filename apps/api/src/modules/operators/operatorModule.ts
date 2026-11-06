@@ -22,13 +22,16 @@ if (!url || !secret || !webOrigin) {
     );
 }
 
-const supabaseAdmin = createClient(url, secret, {
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!,
+  {
     auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
+      autoRefreshToken: false,
+      persistSession: false,
     },
-});
+  }
+);
 
 const isValidEmail = (value: unknown): value is string =>
     typeof value === "string" &&
