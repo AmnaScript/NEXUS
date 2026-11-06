@@ -53,7 +53,6 @@ export default function CreateIncident({
     onClose,
     onCreated,
     onStartPicking,
-    onFinishPicking,
     isPickingLocation,
     pickedCoordinates,
 }: Props) {
@@ -272,8 +271,8 @@ export default function CreateIncident({
                                         <label
                                             key={option.value}
                                             className={`relative flex min-h-[105px] cursor-pointer flex-col justify-between rounded-[13px] border-2 p-3 transition ${selected
-                                                    ? option.style
-                                                    : "border-[#DDD6C7] bg-[#FFFCF5] hover:border-[#B6AEA0]"
+                                                ? option.style
+                                                : "border-[#DDD6C7] bg-[#FFFCF5] hover:border-[#B6AEA0]"
                                                 }`}
                                         >
                                             <input

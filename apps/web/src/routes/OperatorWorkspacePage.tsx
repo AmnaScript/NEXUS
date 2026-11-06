@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import {
     ArrowLeft,
-    Bell,
     Check,
     LoaderCircle,
     RefreshCw,

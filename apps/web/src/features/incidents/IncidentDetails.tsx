@@ -143,7 +143,9 @@ export default function IncidentDetails({
             }
         );
 
-        return () => tween.kill();
+        return () => {
+            tween.kill();
+        };
     }, []);
 
     useEffect(() => {
